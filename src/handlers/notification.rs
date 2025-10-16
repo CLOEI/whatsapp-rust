@@ -41,7 +41,9 @@ async fn handle_notification_impl(client: &Arc<Client>, node: &NodeRef<'_>) {
         let client_clone = client.clone();
         let node_owned = node.to_owned();
         tokio::spawn(async move {
-            if let Err(e) = crate::pair_phone::handle_code_pair_notification(&client_clone, &node_owned).await {
+            if let Err(e) =
+                crate::pair_phone::handle_code_pair_notification(&client_clone, &node_owned).await
+            {
                 warn!("Failed to handle code pair notification: {:?}", e);
             }
         });

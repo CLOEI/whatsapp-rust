@@ -79,14 +79,19 @@ impl Client {
             generate_companion_ephemeral_key()?;
 
         // Clean phone number
-        let phone = phone.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+        let phone = phone
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>();
 
         // Validate phone number
         if phone.len() <= 6 {
             return Err(anyhow!("Phone number is too short"));
         }
         if phone.starts_with('0') {
-            return Err(anyhow!("Phone number must be in international format (no leading 0)"));
+            return Err(anyhow!(
+                "Phone number must be in international format (no leading 0)"
+            ));
         }
 
         // Construct JID
@@ -101,7 +106,10 @@ impl Client {
             .attrs([
                 ("jid", jid.to_string()),
                 ("stage", "companion_hello".to_string()),
-                ("should_show_push_notification", show_push_notification.to_string()),
+                (
+                    "should_show_push_notification",
+                    show_push_notification.to_string(),
+                ),
             ])
             .children([
                 NodeBuilder::new("link_code_pairing_wrapped_companion_ephemeral_pub")
@@ -155,7 +163,11 @@ impl Client {
         *self.phone_linking_cache.lock().await = Some(cache);
 
         // Format code as XXXX-XXXX
-        let formatted_code = format!("{}-{}", &encoded_linking_code[0..4], &encoded_linking_code[4..]);
+        let formatted_code = format!(
+            "{}-{}",
+            &encoded_linking_code[0..4],
+            &encoded_linking_code[4..]
+        );
         info!(target: "Client/PairPhone", "Generated pairing code: {}", formatted_code);
 
         Ok(formatted_code)
@@ -164,8 +176,8 @@ impl Client {
 
 /// Generates companion ephemeral key for pairing
 fn generate_companion_ephemeral_key() -> Result<(KeyPair, Vec<u8>, String), anyhow::Error> {
-    use aes::cipher::{KeyIvInit, StreamCipher};
     use aes::Aes256;
+    use aes::cipher::{KeyIvInit, StreamCipher};
     use pbkdf2::pbkdf2_hmac;
     use sha2::Sha256;
     type Aes256Ctr = ctr::Ctr64BE<Aes256>;
@@ -178,9 +190,15 @@ fn generate_companion_ephemeral_key() -> Result<(KeyPair, Vec<u8>, String), anyh
     let mut iv = [0u8; 16];
     let mut linking_code = [0u8; 5];
 
-    OsRng.try_fill_bytes(&mut salt).map_err(|e| anyhow!("Failed to generate salt: {}", e))?;
-    OsRng.try_fill_bytes(&mut iv).map_err(|e| anyhow!("Failed to generate IV: {}", e))?;
-    OsRng.try_fill_bytes(&mut linking_code).map_err(|e| anyhow!("Failed to generate linking code: {}", e))?;
+    OsRng
+        .try_fill_bytes(&mut salt)
+        .map_err(|e| anyhow!("Failed to generate salt: {}", e))?;
+    OsRng
+        .try_fill_bytes(&mut iv)
+        .map_err(|e| anyhow!("Failed to generate IV: {}", e))?;
+    OsRng
+        .try_fill_bytes(&mut linking_code)
+        .map_err(|e| anyhow!("Failed to generate linking code: {}", e))?;
 
     // Encode linking code using custom base32 alphabet
     let encoded_linking_code = base32_encode_custom(&linking_code, LINKING_BASE32_ALPHABET);
@@ -241,10 +259,10 @@ pub(crate) async fn handle_code_pair_notification(
     client: &Arc<Client>,
     node: &wacore_binary::node::Node,
 ) -> Result<(), anyhow::Error> {
-    use aes::cipher::{KeyIvInit, StreamCipher};
     use aes::Aes256;
-    use aes_gcm::{Aes256Gcm, KeyInit};
+    use aes::cipher::{KeyIvInit, StreamCipher};
     use aes_gcm::aead::{Aead, Payload};
+    use aes_gcm::{Aes256Gcm, KeyInit};
     use hkdf::Hkdf;
     use pbkdf2::pbkdf2_hmac;
     use sha2::Sha256;
@@ -253,7 +271,11 @@ pub(crate) async fn handle_code_pair_notification(
 
     let link_cache = match client.phone_linking_cache.lock().await.as_ref() {
         Some(cache) => cache.clone(),
-        None => return Err(anyhow!("Received code pair notification without pending pairing")),
+        None => {
+            return Err(anyhow!(
+                "Received code pair notification without pending pairing"
+            ));
+        }
     };
 
     // The notification structure is:
@@ -342,10 +364,9 @@ pub(crate) async fn handle_code_pair_notification(
     cipher.apply_keystream(&mut primary_decrypted_pubkey);
 
     // Compute ephemeral shared secret using X25519
-    let ephemeral_shared_secret = link_cache
-        .key_pair
-        .private_key
-        .calculate_agreement(&PublicKey::from_djb_public_key_bytes(&primary_decrypted_pubkey)?)?;
+    let ephemeral_shared_secret = link_cache.key_pair.private_key.calculate_agreement(
+        &PublicKey::from_djb_public_key_bytes(&primary_decrypted_pubkey)?,
+    )?;
 
     // Get our identity key
     let device_snapshot = client.persistence_manager.get_device_snapshot().await;
@@ -370,14 +391,19 @@ pub(crate) async fn handle_code_pair_notification(
     // Store ADV secret for later use in pair-success handling
     client
         .persistence_manager
-        .process_command(crate::store::commands::DeviceCommand::SetAdvSecretKey(adv_secret))
+        .process_command(crate::store::commands::DeviceCommand::SetAdvSecretKey(
+            adv_secret,
+        ))
         .await;
 
     // Encrypt key bundle
     let hk2 = Hkdf::<Sha256>::new(Some(&key_bundle_salt), &ephemeral_shared_secret);
     let mut key_bundle_encryption_key = [0u8; 32];
-    hk2.expand(b"link_code_pairing_key_bundle_encryption_key", &mut key_bundle_encryption_key)
-        .map_err(|_| anyhow!("HKDF expand failed for key bundle encryption key"))?;
+    hk2.expand(
+        b"link_code_pairing_key_bundle_encryption_key",
+        &mut key_bundle_encryption_key,
+    )
+    .map_err(|_| anyhow!("HKDF expand failed for key bundle encryption key"))?;
 
     // Construct plaintext key bundle: our identity pub + primary identity pub + adv secret random
     let mut plaintext_key_bundle = Vec::with_capacity(96);
@@ -393,10 +419,13 @@ pub(crate) async fn handle_code_pair_notification(
     let nonce = aes_gcm::Nonce::from_slice(&key_bundle_nonce);
 
     let encrypted_key_bundle = cipher
-        .encrypt(nonce, Payload {
-            msg: &plaintext_key_bundle,
-            aad: &[],
-        })
+        .encrypt(
+            nonce,
+            Payload {
+                msg: &plaintext_key_bundle,
+                aad: &[],
+            },
+        )
         .map_err(|_| anyhow!("AES-GCM encryption failed"))?;
 
     // Construct wrapped key bundle: salt + nonce + encrypted bundle

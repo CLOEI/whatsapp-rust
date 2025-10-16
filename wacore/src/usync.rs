@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use wacore_binary::builder::NodeBuilder;
 use wacore_binary::jid::{Jid, LEGACY_USER_SERVER};
 use wacore_binary::node::{Node, NodeContent};
@@ -69,11 +69,9 @@ pub fn build_is_on_whatsapp_query(jids: &[Jid], sid: &str) -> Node {
             // For other servers: <user jid="..."/>
             if jid.server == LEGACY_USER_SERVER {
                 NodeBuilder::new("user")
-                    .children([
-                        NodeBuilder::new("contact")
-                            .string_content(jid.to_string())
-                            .build()
-                    ])
+                    .children([NodeBuilder::new("contact")
+                        .string_content(jid.to_string())
+                        .build()])
                     .build()
             } else {
                 NodeBuilder::new("user")
@@ -186,10 +184,8 @@ fn parse_verified_name(user_node: &Node) -> Result<Option<VerifiedName>> {
 
     // Decode the nested Details message if present
     let details = match &certificate.details {
-        Some(details_bytes) => {
-            wa::verified_name_certificate::Details::decode(&details_bytes[..])
-                .map_err(|e| anyhow!("Failed to decode Details: {}", e))?
-        }
+        Some(details_bytes) => wa::verified_name_certificate::Details::decode(&details_bytes[..])
+            .map_err(|e| anyhow!("Failed to decode Details: {}", e))?,
         None => return Ok(None),
     };
 

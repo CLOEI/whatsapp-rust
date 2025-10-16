@@ -621,6 +621,17 @@ impl Client {
             }
         }
 
+        // Check for ACK stanzas that have pending response waiters (e.g., message send confirmations)
+        if node.tag.as_ref() == "ack" {
+            let id_opt = node.get_attr("id");
+            if let Some(id) = id_opt {
+                let has_waiter = self.response_waiters.lock().await.contains_key(id.as_ref());
+                if has_waiter && self.handle_ack_response(node.to_owned()).await {
+                    return;
+                }
+            }
+        }
+
         // Dispatch to appropriate handler using the router
         if !self
             .stanza_router
@@ -1466,6 +1477,59 @@ impl Client {
             g.push(encrypted_buf);
         }
         Ok(())
+    }
+
+    /// Send a node and wait for acknowledgment from the server.
+    ///
+    /// This is similar to Go's `sendNodeAndGetData()` - it sends a message node
+    /// and waits for the server's ACK response, which is critical for proper
+    /// message delivery confirmation.
+    pub(crate) async fn send_node_and_get_response(
+        &self,
+        mut node: Node,
+        timeout_duration: Option<Duration>,
+    ) -> Result<Node, ClientError> {
+        // Get or generate the message ID
+        let msg_id = match node.attrs.get("id") {
+            Some(id) => id.clone(),
+            None => {
+                let id = self.generate_request_id();
+                node.attrs.insert("id".to_string(), id.clone());
+                id
+            }
+        };
+
+        // Set up response waiter before sending
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.response_waiters
+            .lock()
+            .await
+            .insert(msg_id.clone(), tx);
+
+        // Send the node
+        if let Err(e) = self.send_node(node).await {
+            self.response_waiters.lock().await.remove(&msg_id);
+            return Err(e);
+        }
+
+        // Wait for acknowledgment with timeout (default 60 seconds for messages)
+        let timeout_dur = timeout_duration.unwrap_or(Duration::from_secs(60));
+        match tokio::time::timeout(timeout_dur, rx).await {
+            Ok(Ok(response_node)) => Ok(response_node),
+            Ok(Err(_)) => {
+                self.response_waiters.lock().await.remove(&msg_id);
+                Err(ClientError::Socket(SocketError::Crypto(
+                    "Response channel closed".to_string(),
+                )))
+            }
+            Err(_) => {
+                self.response_waiters.lock().await.remove(&msg_id);
+                Err(ClientError::Socket(SocketError::Crypto(format!(
+                    "Timeout waiting for message acknowledgment (ID: {})",
+                    msg_id
+                ))))
+            }
+        }
     }
 
     pub(crate) async fn update_push_name_and_notify(self: &Arc<Self>, new_name: String) {

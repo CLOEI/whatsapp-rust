@@ -204,6 +204,16 @@ impl Client {
             )
             .await?
         };
-        self.send_node(stanza_to_send).await.map_err(|e| e.into())
+
+        // Send the message and wait for server acknowledgment
+        // This is critical for proper delivery confirmation (two gray checkmarks)
+        let response = self
+            .send_node_and_get_response(stanza_to_send, None)
+            .await?;
+
+        // Log the server response for debugging
+        log::debug!("Message send acknowledged by server: {:?}", response.attrs);
+
+        Ok(())
     }
 }

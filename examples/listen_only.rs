@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use wacore::proto_helpers::MessageExt;
 use wacore::types::events::Event;
+use waproto::whatsapp as wa;
 use whatsapp_rust::bot::Bot;
 use whatsapp_rust::pair_phone::PairClientType;
 use whatsapp_rust::store::SqliteStore;
@@ -64,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Invoke pair_phone only on the first PairingQrCode event
                             if !pair_phone_invoked.swap(true, Ordering::SeqCst) {
                                 info!("🔐 First pairing event - attempting phone pairing...");
-                                let phone_number = "62813147890";
+                                let phone_number = "0813147890";
 
                                 match client
                                     .pair_phone(
@@ -107,6 +108,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         Event::Connected(_) => {
                             info!("[EVENT] ✅ Connected successfully!");
+
+                            // Send hello world message
+                            let target_jid = "0813147890@s.whatsapp.net".parse().unwrap();
+                            let mut message = wa::Message::default();
+                            message.conversation = Some("Hello World".to_string());
+
+                            match client.send_message(target_jid, message).await {
+                                Ok(msg_id) => {
+                                    info!(
+                                        "✅ Sent 'Hello World' message to 0813147890, ID: {}",
+                                        msg_id
+                                    );
+                                }
+                                Err(e) => {
+                                    error!("❌ Failed to send message: {:?}", e);
+                                }
+                            }
 
                             // Test is_on_whatsapp functionality
                             match client.is_on_whatsapp(&["0813147890".to_string()]).await {

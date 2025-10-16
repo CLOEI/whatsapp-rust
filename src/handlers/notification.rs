@@ -36,6 +36,18 @@ impl StanzaHandler for NotificationHandler {
 async fn handle_notification_impl(client: &Arc<Client>, node: &NodeRef<'_>) {
     let notification_type = node.get_attr("type").map(|s| s.as_ref()).unwrap_or("");
 
+    // Check for link_code_companion_reg notification (phone pairing)
+    if node.get_optional_child("link_code_companion_reg").is_some() {
+        let client_clone = client.clone();
+        let node_owned = node.to_owned();
+        tokio::spawn(async move {
+            if let Err(e) = crate::pair_phone::handle_code_pair_notification(&client_clone, &node_owned).await {
+                warn!("Failed to handle code pair notification: {:?}", e);
+            }
+        });
+        return;
+    }
+
     match notification_type {
         "encrypt" => {
             if let Some(from) = node.get_attr("from")

@@ -139,6 +139,7 @@ pub struct Client {
     pub(crate) initial_app_state_keys_received: Arc<AtomicBool>,
     pub(crate) major_sync_task_sender: mpsc::Sender<MajorSyncTask>,
     pub(crate) pairing_cancellation_tx: Arc<Mutex<Option<watch::Sender<()>>>>,
+    pub(crate) phone_linking_cache: Arc<Mutex<Option<crate::pair_phone::PhoneLinkingCache>>>,
 
     pub(crate) send_buffer_pool: Arc<Mutex<Vec<Vec<u8>>>>,
 
@@ -216,6 +217,7 @@ impl Client {
             initial_app_state_keys_received: Arc::new(AtomicBool::new(false)),
             major_sync_task_sender: tx,
             pairing_cancellation_tx: Arc::new(Mutex::new(None)),
+            phone_linking_cache: Arc::new(Mutex::new(None)),
             send_buffer_pool: Arc::new(Mutex::new(Vec::with_capacity(4))),
             custom_enc_handlers: Arc::new(DashMap::new()),
             stanza_router: Self::create_stanza_router(),

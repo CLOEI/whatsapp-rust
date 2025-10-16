@@ -1,7 +1,8 @@
 use crate::client::Client;
 use log::debug;
 use std::collections::{HashMap, HashSet};
-use wacore_binary::jid::{Jid, SERVER_JID};
+use wacore::types::user::IsOnWhatsAppResponse;
+use wacore_binary::jid::{Jid, LEGACY_USER_SERVER, SERVER_JID};
 use wacore_binary::node::NodeContent;
 
 impl Client {
@@ -64,6 +65,82 @@ impl Client {
         }
 
         Ok(all_devices)
+    }
+
+    /// Checks if the given phone numbers are registered on WhatsApp.
+    ///
+    /// This function performs a batch query to WhatsApp servers to determine
+    /// which phone numbers are registered, and retrieves verified business
+    /// name information if available.
+    ///
+    /// # Arguments
+    ///
+    /// * `phones` - A slice of phone number strings (e.g., ["1234567890", "9876543210"])
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<IsOnWhatsAppResponse>)` - A vector of responses, one for each registered number
+    /// * `Err(anyhow::Error)` - If the query fails or response parsing fails
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # async fn example(client: &whatsapp_rust::Client) -> Result<(), Box<dyn std::error::Error>> {
+    /// let phones = vec!["1234567890".to_string(), "9876543210".to_string()];
+    /// let responses = client.is_on_whatsapp(&phones).await?;
+    ///
+    /// for response in responses {
+    ///     if response.is_in {
+    ///         println!("{} is registered on WhatsApp as {}", response.query, response.jid);
+    ///         if let Some(verified) = response.verified_name {
+    ///             if let Some(name) = verified.details.verified_name {
+    ///                 println!("  Verified business name: {}", name);
+    ///             }
+    ///         }
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn is_on_whatsapp(
+        &self,
+        phones: &[String],
+    ) -> Result<Vec<IsOnWhatsAppResponse>, anyhow::Error> {
+        debug!("is_on_whatsapp: Checking {} phone numbers", phones.len());
+
+        // Step 1: Convert phone numbers to JIDs with LEGACY_USER_SERVER
+        let jids: Vec<Jid> = phones
+            .iter()
+            .map(|phone| Jid::new(phone, LEGACY_USER_SERVER))
+            .collect();
+
+        // Step 2: Build the usync query
+        let sid = self.generate_request_id();
+        let usync_node = wacore::usync::build_is_on_whatsapp_query(&jids, sid.as_str());
+
+        // Step 3: Send the IQ query
+        let iq = crate::request::InfoQuery {
+            namespace: "usync",
+            query_type: crate::request::InfoQueryType::Get,
+            to: SERVER_JID.parse().unwrap(),
+            content: Some(NodeContent::Nodes(vec![usync_node])),
+            id: None,
+            target: None,
+            timeout: None,
+        };
+
+        let response_node = self.send_iq(iq).await?;
+
+        // Step 4: Parse the response
+        let results = wacore::usync::parse_is_on_whatsapp_response(&response_node)?;
+
+        debug!(
+            "is_on_whatsapp: Found {} registered numbers out of {}",
+            results.iter().filter(|r| r.is_in).count(),
+            phones.len()
+        );
+
+        Ok(results)
     }
 }
 

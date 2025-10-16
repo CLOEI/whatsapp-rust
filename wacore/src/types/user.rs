@@ -85,3 +85,16 @@ pub struct BusinessProfile {
     pub business_hours_time_zone: Option<String>,
     pub business_hours: Vec<BusinessHoursConfig>,
 }
+
+/// Response structure for checking if a phone number is registered on WhatsApp
+#[derive(Debug, Clone)]
+pub struct IsOnWhatsAppResponse {
+    /// The original query string (phone number without suffix)
+    pub query: String,
+    /// The JID associated with this phone number
+    pub jid: Jid,
+    /// Whether the number is registered on WhatsApp (contact type is "in")
+    pub is_in: bool,
+    /// Optional verified business name information
+    pub verified_name: Option<VerifiedName>,
+}

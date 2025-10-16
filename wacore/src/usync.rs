@@ -64,20 +64,24 @@ pub fn build_is_on_whatsapp_query(jids: &[Jid], sid: &str) -> Node {
     let user_nodes = jids
         .iter()
         .map(|jid| {
-            NodeBuilder::new("user")
-                .attr("jid", jid.to_string())
-                .build()
+            // For LegacyUserServer (c.us), the structure is different:
+            // <user><contact>phone@c.us</contact></user>
+            // For other servers: <user jid="..."/>
+            if jid.server == LEGACY_USER_SERVER {
+                NodeBuilder::new("user")
+                    .children([
+                        NodeBuilder::new("contact")
+                            .string_content(jid.to_string())
+                            .build()
+                    ])
+                    .build()
+            } else {
+                NodeBuilder::new("user")
+                    .attr("jid", jid.to_string())
+                    .build()
+            }
         })
         .collect::<Vec<_>>();
-
-    let query_node = NodeBuilder::new("query")
-        .children([
-            NodeBuilder::new("business")
-                .children([NodeBuilder::new("verified_name").build()])
-                .build(),
-            NodeBuilder::new("contact").build(),
-        ])
-        .build();
 
     let list_node = NodeBuilder::new("list").children(user_nodes).build();
 
@@ -89,7 +93,17 @@ pub fn build_is_on_whatsapp_query(jids: &[Jid], sid: &str) -> Node {
             ("mode", "query"),
             ("sid", sid),
         ])
-        .children([query_node, list_node])
+        .children([
+            NodeBuilder::new("query")
+                .children([
+                    NodeBuilder::new("business")
+                        .children([NodeBuilder::new("verified_name").build()])
+                        .build(),
+                    NodeBuilder::new("contact").build(),
+                ])
+                .build(),
+            list_node,
+        ])
         .build()
 }
 

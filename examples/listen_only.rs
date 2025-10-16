@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_backend(backend)
         .with_transport_factory(transport_factory)
         .with_http_client(http_client)
-        .on_event(|event, _client| async move {
+        .on_event(|event, client| async move {
             match event {
                 Event::PairingQrCode { code, timeout } => {
                     info!("--- Pairing QR Code (valid for {}s) ---", timeout.as_secs());
@@ -54,6 +54,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Event::Connected(_) => {
                     info!("[EVENT] ✅ Connected successfully!");
+
+                    // Test is_on_whatsapp functionality
+                    match client.is_on_whatsapp(&["0813147890".to_string()]).await {
+                        Ok(responses) => {
+                            info!("=== IsOnWhatsApp Results ===");
+                            for response in responses {
+                                info!("  Phone: {}", response.query);
+                                info!("  JID: {}", response.jid);
+                                info!("  Registered: {}", response.is_in);
+                                if let Some(verified) = response.verified_name {
+                                    info!("  Verified Business:");
+                                    if let Some(name) = verified.details.verified_name {
+                                        info!("    Name: {}", name);
+                                    }
+                                    if let Some(issuer) = verified.details.issuer {
+                                        info!("    Issuer: {}", issuer);
+                                    }
+                                    if let Some(serial) = verified.details.serial {
+                                        info!("    Serial: {}", serial);
+                                    }
+                                } else {
+                                    info!("  Not a verified business");
+                                }
+                                info!("===========================");
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to check is_on_whatsapp: {}", e);
+                        }
+                    }
                 }
                 Event::Message(msg, info) => {
                     let text = msg.text_content().unwrap_or("<media or empty>");

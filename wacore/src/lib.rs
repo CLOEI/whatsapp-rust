@@ -1,5 +1,3 @@
-#![feature(portable_simd)]
-
 pub use aes_gcm;
 pub mod appstate;
 pub mod client;

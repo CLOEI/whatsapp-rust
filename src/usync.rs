@@ -1,4 +1,5 @@
 use crate::client::Client;
+use crate::jid_utils::server_jid;
 use log::debug;
 use std::collections::{HashMap, HashSet};
 use wacore::types::user::IsOnWhatsAppResponse;
@@ -36,7 +37,7 @@ impl Client {
             let iq = crate::request::InfoQuery {
                 namespace: "usync",
                 query_type: crate::request::InfoQueryType::Get,
-                to: SERVER_JID.parse().unwrap(),
+                to: server_jid(),
                 content: Some(NodeContent::Nodes(vec![usync_node])),
                 id: None,
                 target: None,
